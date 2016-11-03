@@ -1,3 +1,20 @@
+'use strict';
+
+let mongoose = require('mongoose'),
+  passport = require('passport'),
+  LocalStrategy = require('passport-local'),
+  _ = require('lodash'),
+  Promise = require('bluebird'),
+  compare = Promise.promisify(require('bcrypt').compare),
+  session = require('express-session');
+
+mongoose.connect(process.env.MONGO_URI);
+let db = mongoose.connection;
+db.on('open', () => console.log('Database Connected'));
+db.on('error', () => console.log('Problem connecting to database'));
+
+require('./models/users');
+
 var express = require('express');
 var path = require('path');
 var favicon = require('serve-favicon');
@@ -21,6 +38,47 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
+
+app.use(session({
+  secret: 'keyboard cat',
+  resave: false,
+  saveUninitialized: true
+}));
+
+app.use(passport.initialize());
+app.use(passport.session());
+passport.use(new LocalStrategy(
+  {usernameField: 'email'},
+  (email, password, done) => {
+    console.log({email, password});
+    let User = mongoose.model('User'),
+      Promise = require('bluebird'),
+      compare = Promise.promisify(require('bcrypt').compare);
+
+    User.findOne({email})
+      .then(user => {
+        if (!user) {
+          done(new Error('There is no user found with that email address.'));
+        } else {
+          compare(password, user.password)
+            .then(res => {
+              if (!res) return done(new Error('That password seems to be incorrect.'));
+              console.log(user);
+              done(null, user);
+            })
+            .catch(done);
+        }
+      })
+      .catch(done);
+}));
+
+passport.serializeUser((user, next) => {
+  next(null, user);
+});
+
+passport.deserializeUser((user, next) => {
+  next(null, user);
+});
 
 app.use('/', routes);
 app.use('/users', users);
